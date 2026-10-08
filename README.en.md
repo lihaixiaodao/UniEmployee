@@ -42,6 +42,46 @@ https://github.com/user-attachments/assets/73de95eb-4b26-4ddb-9145-6e1e3c3ad2c2
 - Any OpenAI Chat Completions-compatible model endpoint and API key (e.g. DeepSeek, OpenAI)
 - No GPU required by the app itself — hardware needs depend on your chosen model service
 
+> **Windows / PowerShell users**
+>
+> Commands in this document are written in Bash syntax. Under PowerShell there are three differences:
+>
+> | What | Bash | PowerShell |
+> |---|---|---|
+> | Set an env var for one command | `FOO=bar cmd` | `$env:FOO = "bar"` (no spaces around `=`, quote the value) |
+> | venv executables | `.venv/bin/python` | `.venv\Scripts\python.exe` |
+> | Pass PYTHONPATH | leading `PYTHONPATH=backend cmd` | run `$env:PYTHONPATH = "backend"` first, then the command |
+>
+> Also: `python3` is usually `python` on Windows, and `curl` in PowerShell is an alias for `Invoke-WebRequest` — use `curl.exe` for the install check.
+>
+> For example, the PowerShell equivalent of "Start the service":
+>
+> ```powershell
+> $env:PYTHONPATH = "backend"
+> .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8787
+> ```
+>
+> **Besides the syntax above, three behaviors differ on Windows (verified):**
+>
+> 1. **`--reload` is not optional when starting the service.** The default Windows event loop is `ProactorEventLoop`, which psycopg refuses in async mode and which aborts startup with
+>    `psycopg.InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode`.
+>    With `--reload`, uvicorn switches to `SelectorEventLoop` (see `use_subprocess` in `uvicorn/config.py` → `uvicorn/loops/asyncio.py`) and database connections are established normally.
+>
+> 2. **`backend/requirements.lock.txt` pins the Linux-only `uvloop`**, so on Windows pip tries to build it from source and fails with
+>    `RuntimeError: uvloop does not support Windows at the moment`. Filter that line out before installing (equivalent to how `uvicorn[standard]` resolves on Windows):
+>
+>    ```powershell
+>    (Get-Content backend\requirements.lock.txt) -notmatch '^uvloop==' |
+>      Set-Content reqs-win.txt
+>    .venv\Scripts\python.exe -m pip install -r reqs-win.txt
+>    ```
+>
+> 3. **Do not add `--only-binary=:all:` to pip.** `jieba` ships an sdist only, with no wheel; that flag fails with `No matching distribution found for jieba`.
+>
+> Related: to pre-install the browser for the Playwright connector on Windows, use `npx playwright install chromium` — the `--with-deps` in this document installs system libraries on Linux and does not apply on Windows.
+>
+> You can also just use Git Bash or WSL, where every command here works as written.
+
 ### 1. Clone and configure
 
 ```bash

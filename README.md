@@ -74,6 +74,46 @@ https://github.com/user-attachments/assets/73de95eb-4b26-4ddb-9145-6e1e3c3ad2c2
 - 任意 OpenAI Chat Completions 兼容的模型接口与 API Key（如 DeepSeek、OpenAI）
 - 应用本身不需要 GPU，硬件要求取决于你选择的模型服务
 
+> **Windows / PowerShell 用户注意**
+>
+> 本文档命令按 Bash 语法书写，PowerShell 下有三处差异：
+>
+> | 场景 | Bash | PowerShell |
+> |---|---|---|
+> | 临时设环境变量 | `FOO=bar cmd` | `$env:FOO = "bar"`（等号两侧不能有空格，值要加引号） |
+> | venv 可执行文件 | `.venv/bin/python` | `.venv\Scripts\python.exe` |
+> | 传 PYTHONPATH | 行首写 `PYTHONPATH=backend cmd` | 先执行 `$env:PYTHONPATH = "backend"`，再执行命令 |
+>
+> 另：Windows 上 `python3` 通常写作 `python`；PowerShell 里 `curl` 是 `Invoke-WebRequest` 的别名，验证安装请用 `curl.exe`。
+>
+> 以「启动服务」为例，PowerShell 等价写法：
+>
+> ```powershell
+> $env:PYTHONPATH = "backend"
+> .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8787
+> ```
+>
+> **除语法差异外，还有三处 Windows 行为差异（实测）：**
+>
+> 1. **启动服务时 `--reload` 不能省略。** Windows 默认事件循环是 `ProactorEventLoop`，psycopg 异步模式会拒绝使用并导致启动失败：
+>    `psycopg.InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode`。
+>    带上 `--reload` 后 uvicorn 会改用 `SelectorEventLoop`（`uvicorn/config.py` 的 `use_subprocess` → `uvicorn/loops/asyncio.py`），数据库连接才能正常建立。
+>
+> 2. **`backend/requirements.lock.txt` 含 Linux 专属的 `uvloop`**，Windows 上会尝试源码编译并失败：
+>    `RuntimeError: uvloop does not support Windows at the moment`。安装前过滤掉该行即可（等价于 `uvicorn[standard]` 在 Windows 上的正常行为）：
+>
+>    ```powershell
+>    (Get-Content backend\requirements.lock.txt) -notmatch '^uvloop==' |
+>      Set-Content reqs-win.txt
+>    .venv\Scripts\python.exe -m pip install -r reqs-win.txt
+>    ```
+>
+> 3. **不要给 pip 加 `--only-binary=:all:`。** `jieba` 只发布源码包、没有 wheel，加了这个参数会报 `No matching distribution found for jieba`。
+>
+> 顺带一提：Playwright 连接器在 Windows 上预装浏览器用 `npx playwright install chromium` —— 文档里的 `--with-deps` 是给 Linux 装系统库的，Windows 上不适用。
+>
+> 也可以直接用 Git Bash 或 WSL，本文命令开箱即用。
+
 ### 1. 克隆并配置
 
 ```bash

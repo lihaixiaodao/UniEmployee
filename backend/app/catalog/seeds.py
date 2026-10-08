@@ -3,6 +3,8 @@
 import json
 import os
 import re
+import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -19,6 +21,15 @@ def _skill_desc(skill_dir: Path) -> str:
                  if l.startswith("description:")), "")
 
 
+# npx 型 stdio 连接器的跨平台解析：Windows 上 npx 实为 npx.cmd，
+# 而 CreateProcess 不套用 PATHEXT，直接写 "npx" 会报找不到可执行文件。
+_NPX_BIN = shutil.which("npx") or "npx"
+
+# 中立 cwd：不能落在项目根，否则 dotenvx 会把 banner 打到 stdout 污染 MCP 协议通道。
+# tempfile.gettempdir() 在 Windows 为 %TEMP%、Unix 为 /tmp，两边都不含 .env。
+_NEUTRAL_CWD = tempfile.gettempdir()
+
+
 # 内置连接器种子（crm 为 python stdio；newsnow 为 node/npx stdio，BASE_URL 指向本地 newsnow 容器）
 CONNECTOR_SEEDS = [
     ("crm", "CRM 连接器", "订单查询 MCP（stdio）",
@@ -28,22 +39,22 @@ CONNECTOR_SEEDS = [
      {"transport": "stdio", "command": "${PYTHON_BIN}",
       "args": ["app/connectors/crm_lab_server.py"]}),
     ("newsnow", "NewsNow 新闻连接器", "热点新闻抓取 MCP（stdio，npx）",
-     {"transport": "stdio", "command": "npx",
+     {"transport": "stdio", "command": _NPX_BIN,
       "args": ["-y", "newsnow-mcp-server"],
       # DOTENV_CONFIG_QUIET=true 屏蔽 dotenv 的 banner 输出，
       # 避免它在 stdout 打印非 JSON 日志污染 MCP 协议通道。
       "env": {"BASE_URL": "http://localhost:4444",
               "DOTENV_CONFIG_QUIET": "true"},
       # cwd 用无 .env 的中立目录，避免 dotenvx 把 banner 打到 stdout 污染 MCP 通道
-      "cwd": "/tmp"}),
+      "cwd": _NEUTRAL_CWD}),
     # Playwright 浏览器自动化连接器（官方 @playwright/mcp，npx 型 stdio）。
     # 提供 navigate/click/fill/screenshot/extract 等浏览器操作工具，让员工能操作
     # 无 API 的老旧系统、采集网页信息、自动化填报。默认 headless + isolated 模式。
     # 首次使用需预装浏览器：npx playwright install --with-deps chromium
     ("playwright", "Playwright 浏览器连接器", "浏览器自动化 MCP（npx，headless）",
-     {"transport": "stdio", "command": "npx",
+     {"transport": "stdio", "command": _NPX_BIN,
       "args": ["-y", "@playwright/mcp@latest", "--headless", "--isolated"],
-      "cwd": "/tmp"}),
+      "cwd": _NEUTRAL_CWD}),
 ]
 
 # 内置连接器指派给员工（与 seeds dict 的 cons 保持一致，用于独立回填）
