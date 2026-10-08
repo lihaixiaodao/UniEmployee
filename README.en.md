@@ -141,6 +141,17 @@ PYTHONPATH=backend .venv/bin/uvicorn app.main:app --reload --port 8787
 cd frontend && npm install && npm run dev
 ```
 
+Or use the one-command launcher, which checks the virtualenv, brings up the PostgreSQL container, verifies the ports are free, and then starts in the mode you picked:
+
+```bash
+./scripts/start.sh                 # dev: backend --reload + vite HMR, served at http://localhost:5173
+./scripts/start.sh --mode single   # single process: backend on 8787, serving the built frontend/dist
+./scripts/start.sh --port 9000     # use a different backend port
+./scripts/start.sh --no-db --open  # skip the database check and open a browser
+```
+
+On Windows use `.\scripts\start.ps1` — same behaviour, with `-Mode dev|single`, `-BackendPort`, `-NoDb`, `-Open`. To stop: close the two windows in dev mode, or Ctrl+C in single mode.
+
 Full Docker deployment:
 
 ```bash

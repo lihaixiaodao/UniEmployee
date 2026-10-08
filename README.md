@@ -172,6 +172,17 @@ PYTHONPATH=backend .venv/bin/uvicorn app.main:app --reload --port 8787
 cd frontend && npm install && npm run dev
 ```
 
+也可以直接用一键启动脚本，它会先检查虚拟环境、拉起 PostgreSQL 容器、确认端口没被占用，再按模式启动：
+
+```bash
+./scripts/start.sh                 # dev：后端 --reload + 前端 vite 热重载，访问 http://localhost:5173
+./scripts/start.sh --mode single   # 单进程：仅后端 8787，使用已构建的 frontend/dist
+./scripts/start.sh --port 9000     # 换后端端口
+./scripts/start.sh --no-db --open  # 跳过数据库检查 + 启动后打开浏览器
+```
+
+Windows 用 `.\scripts\start.ps1`，行为一致，参数为 `-Mode dev|single`、`-BackendPort`、`-NoDb`、`-Open`。停止：dev 模式关掉那两个窗口，single 模式 Ctrl+C。
+
 Docker 一键部署：
 
 ```bash

@@ -25,6 +25,7 @@ frontend/dist/
 .zcode/
 .docxlib/
 .trae/
+.idea/
 
 # 本机技能软链接（指向开发者本地 ~/.agents/skills，他人环境不存在）
 backend/skills/docx-reference
