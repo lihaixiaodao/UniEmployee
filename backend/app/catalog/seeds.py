@@ -23,11 +23,22 @@ def _skill_desc(skill_dir: Path) -> str:
 
 # npx 型 stdio 连接器的跨平台解析：Windows 上 npx 实为 npx.cmd，
 # 而 CreateProcess 不套用 PATHEXT，直接写 "npx" 会报找不到可执行文件。
-_NPX_BIN = shutil.which("npx") or "npx"
+# POSIX 保持裸 "npx" 走 PATH 查找：shutil.which 会返回绝对路径，写进种子配置
+# 等于把 npx 的位置冻结进数据库，换了 node 安装位置就失效。
+_NPX_BIN = (shutil.which("npx") or "npx") if os.name == "nt" else "npx"
 
 # 中立 cwd：不能落在项目根，否则 dotenvx 会把 banner 打到 stdout 污染 MCP 协议通道。
 # tempfile.gettempdir() 在 Windows 为 %TEMP%、Unix 为 /tmp，两边都不含 .env。
 _NEUTRAL_CWD = tempfile.gettempdir()
+
+# 旧版本写死的 npx 连接器默认值，在 Windows 上不可用（command 找不到可执行文件、
+# cwd 报 WinError 267）。存量库不会被 backfill_connectors 的 INSERT OR IGNORE 覆盖，
+# 升级后仍是坏的，因此要按下面的规则定向改写。POSIX 上这两个"旧值"恰好等于新值，
+# 整条迁移在那边是空操作。
+_LEGACY_CONNECTOR_FIELDS = {
+    "newsnow": {"command": "npx", "cwd": "/tmp"},
+    "playwright": {"command": "npx", "cwd": "/tmp"},
+}
 
 
 # 内置连接器种子（crm 为 python stdio；newsnow 为 node/npx stdio，BASE_URL 指向本地 newsnow 容器）
@@ -374,9 +385,44 @@ def seed_if_empty():
     con.close()
 
 
+def _migrate_legacy_connector_config(cur, cid, new_cfg):
+    """把连接器配置里仍是旧默认值的字段升级为新值，返回是否改写过。
+
+    只动 _LEGACY_CONNECTOR_FIELDS 列出的字段，且仅当存值恰好等于旧默认值——
+    管理员在资源中心改过的配置必然不等于旧默认值，不会被误伤。解析不出配置
+    （非 JSON / 非对象）就跳过，不去猜损坏的数据。
+    """
+    legacy = _LEGACY_CONNECTOR_FIELDS.get(cid)
+    if not legacy:
+        return False
+    row = cur.execute("SELECT config FROM connectors WHERE id=?", (cid,)).fetchone()
+    if not row or row[0] is None:
+        return False
+    cfg = row[0]
+    if isinstance(cfg, str):
+        try:
+            cfg = json.loads(cfg)
+        except ValueError:
+            return False
+    if not isinstance(cfg, dict):
+        return False
+    changed = False
+    for key, old in legacy.items():
+        new = new_cfg.get(key)
+        if new is not None and new != old and cfg.get(key) == old:
+            cfg[key] = new
+            changed = True
+    if changed:
+        cur.execute("UPDATE connectors SET config=? WHERE id=?",
+                    (json.dumps(cfg, ensure_ascii=False), cid))
+    return changed
+
+
 def backfill_connectors():
     """幂等补齐内置连接器（含指派）。对新库由 seed_if_empty 写入；对已存在的库，
-    这里用 INSERT OR IGNORE 补缺——不覆盖管理员在资源中心对连接器/指派的改动。"""
+    这里用 INSERT OR IGNORE 补缺——不覆盖管理员在资源中心对连接器/指派的改动。
+    唯一的例外是 _migrate_legacy_connector_config 那类"旧默认值已不可用"的定向
+    升级，否则存量库升级后连接器仍然起不来。"""
     con = _conn()
     cur = con.cursor()
     for cid, cname, cdesc, ccfg in CONNECTOR_SEEDS:
@@ -385,6 +431,7 @@ def backfill_connectors():
         cur.execute(
             "INSERT OR IGNORE INTO connectors(id,name,description,config) VALUES(?,?,?,?)",
             (cid, cname, cdesc, json.dumps(ccfg, ensure_ascii=False)))
+        _migrate_legacy_connector_config(cur, cid, ccfg)
     for cid, emps in CONNECTOR_ASSIGN.items():
         if is_production() and cid in DEMO_CONNECTOR_IDS:
             continue
