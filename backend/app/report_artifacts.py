@@ -1,4 +1,10 @@
-"""Persist report HTML emitted inline in assistant messages as workspace artifacts."""
+"""内嵌报告归档：把助手消息中以 REPORT_HTML_START/END 包裹的 HTML 看板落盘为工作区产物。
+
+数据分析 / 市场简报等员工会把完整 HTML 看板直接内联在回复文本里。本模块负责：
+- 从助手消息中提取合法可渲染的 HTML 看板（REPORT_HTML_START/END 分隔符）；
+- 去重后写入受控的私有产物目录（按 user/会话哈希隔离），登记 conversation_files；
+- 历史会话回读时幂等补登记（幂等幂等，只归档 AIMessage，忽略工具消息）。
+"""
 
 from __future__ import annotations
 
@@ -24,6 +30,8 @@ _REPORT_RE = re.compile(
 
 
 class _TitleParser(HTMLParser):
+    """极简 HTML 解析器：只抓取 <title> 标签内的文本，用于给看板起文件名。"""
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.in_title = False
@@ -43,6 +51,7 @@ class _TitleParser(HTMLParser):
 
 
 def _is_renderable_report(value: str) -> bool:
+    """判断字符串是否是「可渲染的完整 HTML 文档」，避免把短片段误归档成看板。"""
     source = (value or "").strip()
     if len(source) < 80:
         return False
@@ -58,7 +67,10 @@ def _is_renderable_report(value: str) -> bool:
 
 
 def extract_inline_reports(content: str) -> list[str]:
-    """Extract valid REPORT_HTML blocks and de-duplicate identical blocks."""
+    """从助手回复中提取所有合法的 REPORT_HTML 看板块，并按内容哈希去重。
+
+    兼容裸 HTML 与 ```html 代码块包裹两种写法，剔除过短或非完整文档的片段。
+    """
     if not isinstance(content, str) or not content:
         return []
     found: list[str] = []
@@ -78,6 +90,7 @@ def extract_inline_reports(content: str) -> list[str]:
 
 
 def _report_title(report: str) -> str:
+    """提取看板 <title> 作为文件名主体；无标题或提取失败时回退「数据分析报告」。"""
     parser = _TitleParser()
     try:
         parser.feed(report[:200_000])
@@ -90,7 +103,11 @@ def _report_title(report: str) -> str:
 
 def save_inline_report(workspace_root: Path, user_id: str, conv_id: str,
                        turn_no: int | None, report: str) -> dict | None:
-    """Write an inline report into the private artifact store using a stable path."""
+    """把内嵌看板写入私有产物目录（稳定路径 + 原子写入），返回登记信息。
+
+    稳定路径 = 内容哈希去重，同一看板重复出现不重写；写入用临时文件 + os.replace
+    原子替换，避免并发读到半成品。
+    """
     if not _is_renderable_report(report):
         return None
     payload = report.encode("utf-8")
@@ -135,7 +152,7 @@ def save_inline_report(workspace_root: Path, user_id: str, conv_id: str,
 
 def archive_inline_reports(content: str, user_id: str, conv_id: str,
                            turn_no: int | None) -> list[dict]:
-    """Save and index report blocks from one assistant response."""
+    """把单条助手回复中的看板全部归档并登记 conversation_files。"""
     saved: list[dict] = []
     for report in extract_inline_reports(content):
         item = save_inline_report(WORKSPACE_DATA, user_id, conv_id, turn_no, report)
@@ -152,6 +169,7 @@ def archive_inline_reports(content: str, user_id: str, conv_id: str,
 
 
 def _message_text(message) -> str:
+    """取消息的纯文本内容（兼容字符串 content 与多段 list content）。"""
     content = getattr(message, "content", "")
     if isinstance(content, str):
         return content
@@ -163,7 +181,11 @@ def _message_text(message) -> str:
 
 def archive_assistant_reports(messages: list, user_id: str,
                               conv_id: str) -> list[dict]:
-    """Idempotently backfill report blocks from persisted assistant messages only."""
+    """从历史会话的已持久化消息里幂等回填看板（仅 AIMessage，忽略工具消息）。
+
+    供打开历史对话时补登记：工具消息里会回显技能模板或文件内容，若一并归档
+    会产生大量噪音，因此只归档面向用户的助手回答。
+    """
     turn_no = 0
     saved: list[dict] = []
     seen_artifact_ids: set[int] = set()

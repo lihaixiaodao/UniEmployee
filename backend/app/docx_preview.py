@@ -1,4 +1,10 @@
-"""Render DOCX documents into a restricted, self-contained HTML preview."""
+"""Word 文档在线预览：把 DOCX 渲染成受限制、自包含的 HTML 预览。
+
+数字员工生成的方案/纪要等 Word 产物，前端需要在线预览而非强制下载。本模块
+直接解析 DOCX 的 OOXML 结构（段落 / 表格 / 内嵌图片 / 基础排版），输出一份
+带 CSP（禁脚本、只放行 data: 图片）的自包含 HTML，避免把文档里的潜在脚本
+带进主站会话。三个硬限制：文档 ≤30MB、解压后 ≤120MB、内嵌图片合计 ≤15MB。
+"""
 from __future__ import annotations
 
 import base64
@@ -19,6 +25,7 @@ MAX_INLINE_IMAGES_SIZE = 15 * 1024 * 1024
 
 
 def _check_package(path: Path) -> None:
+    """预览前校验：文档大小与解压后体积超限直接拒绝（防 zip 炸弹）。"""
     if path.stat().st_size > MAX_DOCX_SIZE:
         raise ValueError("文档超过 30 MB，暂不支持在线预览，请下载后查看")
     try:
@@ -34,6 +41,7 @@ def _check_package(path: Path) -> None:
 
 
 def _iter_blocks(parent):
+    """按文档流顺序遍历正文块（段落 w:p 与表格 w:tbl），保持原始阅读顺序。"""
     element = parent._body._element if isinstance(parent, DocumentObject) else parent._tc
     for child in element.iterchildren():
         if child.tag == qn("w:p"):
@@ -43,6 +51,7 @@ def _iter_blocks(parent):
 
 
 def _run_html(run, image_budget: list[int]) -> str:
+    """把单个文本 run 转为 HTML（转义 + 内嵌图片 + 字号/颜色/加粗/斜体/下划线）。"""
     text = html.escape(run.text or "").replace("\n", "<br>").replace("\t", "&emsp;")
     for blip in run._element.xpath(".//a:blip"):
         relationship_id = blip.get(qn("r:embed"))
@@ -75,6 +84,7 @@ def _run_html(run, image_budget: list[int]) -> str:
 
 
 def _paragraph_html(paragraph, image_budget: list[int]) -> str:
+    """段落 → HTML：按样式名映射到 h1~h6/p，识别标题/副标题/列表与对齐。"""
     content = "".join(_run_html(run, image_budget) for run in paragraph.runs)
     # Some generated documents store hyperlinks outside the paragraph's run list.
     if not content:
@@ -105,6 +115,7 @@ def _paragraph_html(paragraph, image_budget: list[int]) -> str:
 
 
 def _table_html(table, image_budget: list[int]) -> str:
+    """表格 → HTML：首行作表头，支持单元格内嵌段落与嵌套表格。"""
     rows = []
     for row_index, row in enumerate(table.rows):
         cells = []
@@ -123,7 +134,11 @@ def _table_html(table, image_budget: list[int]) -> str:
 
 
 def render_docx_html(path: Path) -> str:
-    """Convert the document's paragraphs, tables, basic formatting, and images."""
+    """入口：把 DOCX 渲染为自包含 HTML 字符串（含内联样式与 CSP）。
+
+    返回的 HTML 由预览端注入 <iframe sandbox="allow-scripts"> 中展示，
+    CSP 已禁止除 data: 图片外的所有外部资源，确保预览环境与主站隔离。
+    """
     _check_package(path)
     try:
         document = Document(path)
