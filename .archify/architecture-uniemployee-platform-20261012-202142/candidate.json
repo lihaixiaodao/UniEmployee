@@ -1,0 +1,415 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "UniEmployee 数字员工平台架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-uniemployee-platform-20261012-202142/uniemployee-platform.html",
+    "repository": {
+      "url": "ssh://git@github.com/lihaixiaodao/UniEmployee.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "b0bb66c119bae2100faaebfd253f097b16a5a75e"
+    }
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "用户 / 管理员",
+      "sublabel": "浏览器",
+      "pos": [20, 40],
+      "size": [215, 70]
+    },
+    {
+      "id": "web-workbench",
+      "type": "frontend",
+      "label": "Web 工作台",
+      "sublabel": "对话 / 资源中心 / 执行记录",
+      "tag": "fetch + ReadableStream 读 SSE",
+      "pos": [320, 200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "frontend/src/composables/useChatStream.js", "line": 231, "end_line": 250 },
+        { "path": "frontend/src/api.js", "line": 9, "end_line": 26 },
+        { "path": "frontend/src/views/ChatView.vue", "line": 289, "end_line": 294 }
+      ]
+    },
+    {
+      "id": "analyst-workbench",
+      "type": "frontend",
+      "label": "小数分析工作台",
+      "sublabel": "/app/analyst · 复用 SSE 链路",
+      "pos": [20, 200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "frontend/src/utils/employeeRoutes.js", "line": 4, "end_line": 11 },
+        { "path": "frontend/src/router/index.js", "line": 55, "end_line": 86 },
+        { "path": "frontend/src/views/agent/analyst/AnalystView.vue", "line": 636, "end_line": 643 }
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "backend",
+      "label": "FastAPI 网关",
+      "sublabel": "app.main · :8787",
+      "tag": "SSE 流 / JWT / CSRF / 健康检查",
+      "pos": [320, 400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/main.py", "line": 143 },
+        { "path": "backend/app/main.py", "line": 147, "end_line": 187 },
+        { "path": "backend/app/main.py", "line": 243 }
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "自动任务调度",
+      "sublabel": "scheduler · automations",
+      "tag": "cron 30s 轮询 / webhook 事件",
+      "pos": [620, 400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/scheduler.py", "line": 49, "end_line": 65 },
+        { "path": "backend/app/automations.py", "line": 455, "end_line": 525 },
+        { "path": "backend/app/routes/automations.py", "line": 104, "end_line": 124 }
+      ]
+    },
+    {
+      "id": "im-channel",
+      "type": "external",
+      "label": "IM 频道（外发）",
+      "sublabel": "outbound_webhook 推送目标",
+      "tag": "平台内 IM 页面为占位",
+      "pos": [920, 400],
+      "size": [215, 80],
+      "sources": [
+        { "path": "backend/app/routes/im.py", "line": 21 },
+        { "path": "frontend/src/views/AutomationView.vue", "line": 172 },
+        { "path": "frontend/src/views/ImView.vue", "line": 1, "end_line": 26 }
+      ]
+    },
+    {
+      "id": "approvals",
+      "type": "security",
+      "label": "HITL 审批单",
+      "sublabel": "approvals.py · interrupt_on",
+      "tag": "持久化审批单 · 过期自动拒绝",
+      "pos": [20, 600],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/approvals.py", "line": 22, "end_line": 36 },
+        { "path": "backend/app/streaming.py", "line": 578, "end_line": 586 },
+        { "path": "backend/app/routes/conversations.py", "line": 320, "end_line": 363 }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "Agent 运行时",
+      "sublabel": "runtime + streaming + agent_runs",
+      "tag": "agent 缓存 / 预热 / astream → SSE",
+      "pos": [320, 600],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/runtime.py", "line": 304, "end_line": 339 },
+        { "path": "backend/app/streaming.py", "line": 563, "end_line": 575 },
+        { "path": "backend/app/agent_runs.py", "line": 206, "end_line": 222 }
+      ]
+    },
+    {
+      "id": "run-store",
+      "type": "database",
+      "label": "运行记录库",
+      "sublabel": "conversations / checkpoints / traces",
+      "tag": "对话状态 · 可重放事件 · Token 耗时",
+      "pos": [20, 800],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/main.py", "line": 108, "end_line": 127 },
+        { "path": "backend/app/db.py", "line": 36, "end_line": 37 },
+        { "path": "backend/app/traces.py", "line": 42, "end_line": 71 }
+      ]
+    },
+    {
+      "id": "compiler",
+      "type": "backend",
+      "label": "编译层",
+      "sublabel": "compiler.compile_agent()",
+      "tag": "技能播种 / 工具装配 / 提示词拼装",
+      "pos": [320, 800],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 623, "end_line": 709 },
+        { "path": "backend/app/compiler.py", "line": 301, "end_line": 441 },
+        { "path": "backend/app/spec.py", "line": 8, "end_line": 31 }
+      ]
+    },
+    {
+      "id": "catalog",
+      "type": "database",
+      "label": "catalog 资源库",
+      "sublabel": "员工 / 技能 / 工具 / SOP / 连接器",
+      "tag": "含知识库目录 · YAML 仅首次空库播种",
+      "pos": [620, 800],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/catalog/db.py", "line": 53, "end_line": 120 },
+        { "path": "backend/app/catalog/seeds.py", "line": 358, "end_line": 383 },
+        { "path": "backend/app/catalog/employees.py", "line": 24, "end_line": 72 }
+      ]
+    },
+    {
+      "id": "guard",
+      "type": "security",
+      "label": "安全护栏",
+      "sublabel": "guard · 工具策略 / 敏感词",
+      "tag": "AST 只读 SQL · 行数上限 · 超时",
+      "pos": [20, 1000],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/guard/__init__.py", "line": 91, "end_line": 139 },
+        { "path": "backend/app/compiler.py", "line": 77, "end_line": 79 },
+        { "path": "backend/app/agent/analyst/datasource/manager.py", "line": 72, "end_line": 139 }
+      ]
+    },
+    {
+      "id": "deepagent",
+      "type": "backend",
+      "label": "DeepAgents Agent",
+      "sublabel": "create_deep_agent() · LangGraph",
+      "tag": "模型调用 / 子代理 / 中间件 / 审批策略",
+      "pos": [320, 1000],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 686, "end_line": 700 }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "工具层",
+      "sublabel": "本地注册表 + 闭包 + MCP 工具",
+      "tag": "kb_search / ontology_* / start_refund",
+      "pos": [620, 1000],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 42, "end_line": 75 },
+        { "path": "backend/app/compiler.py", "line": 339, "end_line": 381 },
+        { "path": "backend/app/compiler.py", "line": 81, "end_line": 120 }
+      ]
+    },
+    {
+      "id": "model-api",
+      "type": "external",
+      "label": "模型服务",
+      "sublabel": "OpenAI 兼容协议",
+      "tag": "Base URL / Key 取自 catalog 或环境变量",
+      "pos": [20, 1200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 443, "end_line": 471 }
+      ]
+    },
+    {
+      "id": "ontology",
+      "type": "database",
+      "label": "企业本体",
+      "sublabel": "ontology 库 · 实体 / 关系",
+      "tag": "客户 360 · 故障影响 · 授权写回",
+      "pos": [920, 1000],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/tools/ontology_tools.py", "line": 30, "end_line": 33 },
+        { "path": "backend/app/main.py", "line": 74, "end_line": 83 }
+      ]
+    },
+    {
+      "id": "workflow-refund",
+      "type": "backend",
+      "label": "退款工作流",
+      "sublabel": "StateGraph 内层状态机",
+      "tag": "await_approval 挂起点 · 唯一代码内置流程",
+      "pos": [920, 800],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/workflows/refund.py", "line": 121, "end_line": 146 },
+        { "path": "backend/app/workflows/refund.py", "line": 149, "end_line": 202 }
+      ]
+    },
+    {
+      "id": "kb-external",
+      "type": "external",
+      "label": "知识源",
+      "sublabel": "产品 FAQ / Wiki / RAGFlow",
+      "tag": "按员工分配 · 检索结果标注来源",
+      "pos": [620, 1200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/connectors/ragflow_client.py", "line": 1, "end_line": 8 },
+        { "path": "backend/app/knowledge.py", "line": 21 }
+      ]
+    },
+    {
+      "id": "connectors",
+      "type": "backend",
+      "label": "MCP 连接器",
+      "sublabel": "crm / newsnow / playwright",
+      "tag": "MultiServerMCPClient · 失败降级为本地工具",
+      "pos": [920, 1200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/catalog/seeds.py", "line": 45, "end_line": 69 },
+        { "path": "backend/app/compiler.py", "line": 383, "end_line": 441 }
+      ]
+    },
+    {
+      "id": "mcp-external",
+      "type": "external",
+      "label": "外部业务系统",
+      "sublabel": "CRM mock / 新闻 / 浏览器",
+      "tag": "stdio 子进程或 npx 拉起",
+      "pos": [920, 1400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/connectors/crm_server.py", "line": 105, "end_line": 118 },
+        { "path": "backend/app/catalog/seeds.py", "line": 60, "end_line": 69 }
+      ]
+    },
+    {
+      "id": "backends",
+      "type": "backend",
+      "label": "执行后端路由",
+      "sublabel": "CompositeBackend 虚拟路径",
+      "tag": "/data · /memories · /skills · /sops",
+      "pos": [320, 1200],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 592, "end_line": 620 }
+      ]
+    },
+    {
+      "id": "artifacts",
+      "type": "database",
+      "label": "报告与产物",
+      "sublabel": "workspace/data/.artifact-store",
+      "tag": "HTML 看板 / DOCX 预览 · 元数据入 conversations",
+      "pos": [20, 1400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/artifact_storage.py", "line": 14, "end_line": 65 },
+        { "path": "backend/app/routes/workspace.py", "line": 137, "end_line": 148 }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Store 命名空间",
+      "sublabel": "长期记忆 / 技能 / SOP 全文",
+      "tag": "namespace (user_id, employee_id)",
+      "pos": [320, 1400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/compiler.py", "line": 516, "end_line": 538 },
+        { "path": "backend/app/runtime.py", "line": 167, "end_line": 218 }
+      ]
+    },
+    {
+      "id": "sandbox",
+      "type": "cloud",
+      "label": "OpenSandbox",
+      "sublabel": "会话级隔离容器",
+      "pos": [620, 1400],
+      "size": [215, 88],
+      "sources": [
+        { "path": "backend/app/sandbox_mgr.py", "line": 187, "end_line": 242 },
+        { "path": "backend/app/compiler.py", "line": 601, "end_line": 609 }
+      ]
+    }
+  ],
+  "connections": [
+    { "id": "users-web", "from": "users", "to": "web-workbench", "fromSide": "right", "toSide": "top" },
+    { "id": "users-analyst", "from": "users", "to": "analyst-workbench", "fromSide": "bottom", "toSide": "top" },
+    { "id": "web-gateway", "from": "web-workbench", "to": "gateway", "label": "SSE 对话流", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "analyst-gateway", "from": "analyst-workbench", "to": "gateway", "fromSide": "right", "toSide": "left" },
+    { "id": "gateway-runtime", "from": "gateway", "to": "runtime", "label": "POST /messages", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "gateway-catalog", "from": "gateway", "to": "catalog", "label": "/api/admin 配置", "variant": "dashed", "fromSide": "right", "toSide": "top" },
+    { "id": "gateway-scheduler", "from": "gateway", "to": "scheduler", "label": "事件触发", "fromSide": "right", "toSide": "left" },
+    { "id": "gateway-approvals", "from": "gateway", "to": "approvals", "label": "审批决定", "variant": "security", "fromSide": "left", "toSide": "top" },
+    { "id": "runtime-compiler", "from": "runtime", "to": "compiler", "label": "未命中缓存则编译", "fromSide": "bottom", "toSide": "top" },
+    { "id": "runtime-approvals", "from": "runtime", "to": "approvals", "label": "挂起", "variant": "security", "fromSide": "left", "toSide": "right" },
+    { "id": "approvals-runtime", "from": "approvals", "to": "runtime", "label": "恢复运行", "variant": "security", "fromSide": "right", "toSide": "left" },
+    { "id": "scheduler-runtime", "from": "scheduler", "to": "runtime", "label": "复用对话运行时", "fromSide": "bottom", "toSide": "top" },
+    { "id": "scheduler-im", "from": "scheduler", "to": "im-channel", "label": "推送结果", "variant": "dashed", "fromSide": "right", "toSide": "left" },
+    { "id": "runtime-run-store", "from": "runtime", "to": "run-store", "label": "状态与事件", "fromSide": "left", "toSide": "top" },
+    { "id": "compiler-catalog", "from": "compiler", "to": "catalog", "label": "读配置", "fromSide": "right", "toSide": "left" },
+    { "id": "compiler-guard", "from": "compiler", "to": "guard", "label": "工具策略", "variant": "security", "fromSide": "left", "toSide": "right" },
+    { "id": "compiler-deepagent", "from": "compiler", "to": "deepagent", "label": "create_deep_agent()", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "deepagent-model", "from": "deepagent", "to": "model-api", "label": "调用", "fromSide": "left", "toSide": "right" },
+    { "id": "deepagent-tools", "from": "deepagent", "to": "tools", "label": "工具调用", "fromSide": "right", "toSide": "left" },
+    { "id": "deepagent-backends", "from": "deepagent", "to": "backends", "label": "文件 / 记忆读写", "fromSide": "bottom", "toSide": "top" },
+    { "id": "tools-ontology", "from": "tools", "to": "ontology", "label": "本体查询", "fromSide": "right", "toSide": "left" },
+    { "id": "tools-kb", "from": "tools", "to": "kb-external", "label": "FAQ / Wiki / RAGFlow", "fromSide": "bottom", "toSide": "top" },
+    { "id": "tools-connectors", "from": "tools", "to": "connectors", "label": "MCP 工具并入", "fromSide": "right", "toSide": "left" },
+    { "id": "tools-workflow", "from": "tools", "to": "workflow-refund", "label": "start_refund 内层图", "fromSide": "top", "toSide": "left" },
+    { "id": "connectors-mcp", "from": "connectors", "to": "mcp-external", "label": "stdio / npx", "fromSide": "bottom", "toSide": "top" },
+    { "id": "backends-store", "from": "backends", "to": "store", "label": "/memories /skills /sops", "fromSide": "bottom", "toSide": "top" },
+    { "id": "backends-artifacts", "from": "backends", "to": "artifacts", "label": "/data → workspace", "variant": "dashed", "fromSide": "left", "toSide": "top" },
+    { "id": "backends-sandbox", "from": "backends", "to": "sandbox", "label": "会话级沙箱", "fromSide": "right", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "五层能力模型",
+      "items": [
+        "Employee：catalog 中的员工配置（人设 / 模型 / 技能 / 工具 / 知识库 / SOP / 连接器），编译为可运行 Agent",
+        "Workflow / SOP：退款 StateGraph 是唯一代码内置流程；其余 SOP 以规程文本 + 技能执行",
+        "Skill：SKILL.md 规程在编译期播种进 Store，模型按需 read_file 取全文，不凭记忆跳过",
+        "Connector：MCP 连接器 crm / crm_lab / newsnow / playwright，stdio 或 npx 形态",
+        "Tool：本地注册表 + 闭包工具（kb_search / ontology_* / start_refund）+ 无条件注入的通用工具"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "对话与渠道",
+      "items": [
+        "前端用 fetch + ReadableStream 消费 SSE，不是 EventSource",
+        "运行由后台 worker 执行，前端可经 GET /api/runs/{id}/events?after= 断线重放",
+        "事件类型：token / thinking / tool / subagent / approval_required / file",
+        "IM 频道目前只是自动任务结果的外发目标；平台内 IM 页面为占位页"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "数据存储",
+      "items": [
+        "PostgreSQL 7 个业务库：catalog / conversations / checkpoints / store / traces / approvals / ontology，本地可回退 SQLite 文件",
+        "长期记忆的 namespace 是 (user_id, employee_id)，必须在编译期闭包确定，运行时懒初始化",
+        "报告与产物落在 workspace/data/.artifact-store，元数据登记进 conversations 库"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "安全与护栏",
+      "items": [
+        "所有接口要求 Bearer JWT；登录失败按 (IP, 用户名) 限流；写操作校验 CSRF",
+        "工具 allow / deny 策略，MCP 工具对普通用户默认拒绝；被拒工具保留 schema 但不执行",
+        "内置文件与命令工具按角色裁剪，内联子代理默认只读",
+        "敏感词在输入与输出两侧拦截",
+        "SQL 经 AST 只读校验 + 行数上限 + 服务端超时；表白名单只作用于预览 / 画像接口，不拦普通 SELECT",
+        "生产模式下执行型员工必须启用沙箱，否则编译直接报错"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "文档与源码的差异",
+      "items": [
+        "长对话自动压缩：README 称由 deepagents 的 SummarizationMiddleware 提供，本仓库源码中未见显式装配",
+        "generate_solution_doc 已入库但未进入运行时工具集，当前不可达",
+        "员工 YAML 只在首次空库时播种；改 YAML 不会重新播种已有 catalog"
+      ]
+    }
+  ]
+}

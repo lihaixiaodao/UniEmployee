@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f76e6e4b-d6b7-4a7d-aebc-92d18252a800",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "D:\\Projects\\AI\\githubdemo\\UniEmployee\\.archify\\architecture-uniemployee-platform-20261012-202142\\candidate.json",
+  "output": "D:\\Projects\\AI\\githubdemo\\UniEmployee\\.archify\\architecture-uniemployee-platform-20261012-202142\\uniemployee-platform.html",
+  "specification": {
+    "sha256": "bbb9df3976bf3e63e91a5897ab2bacd489288dd3ce7969cd833952b28162c5dc",
+    "bytes": 18176
+  },
+  "artifact": {
+    "sha256": "49a663cb49854f29ab8a5817bd750956f90a626502f4fe3aeebbf2ef0dd8f71b",
+    "bytes": 812811
+  }
+}
