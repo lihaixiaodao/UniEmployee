@@ -288,13 +288,13 @@ def test_find_paths_more_business_scenarios():
     def entity(type_, name):
         return ontology.find_entities("default", type_, name)[0]
 
-    geely = entity("customer", "吉利汽车")
+    geely = entity("customer", "长风汽车集团")
     product = entity("product", "5G 专网")
     customer_paths = ontology.find_paths(
         "default", geely["id"], target_id=product["id"], max_depth=2)
     assert any(
         p["hops"] == 2
-        and p["text"].startswith("吉利汽车 -签约-> HT-2025-0031 -包含-> 5G 专网")
+        and p["text"].startswith("长风汽车集团 -签约-> HT-2025-0031 -包含-> 5G 专网")
         for p in customer_paths
     )
 
@@ -318,14 +318,14 @@ def test_expand_customer_context_contains_contracts_and_products():
     ontology.seed_schema_if_empty()
     ontology.seed_crm_demo_if_empty()
 
-    geely = ontology.find_entities("default", "customer", "吉利汽车")[0]
+    geely = ontology.find_entities("default", "customer", "长风汽车集团")[0]
     graph = ontology.expand_entity("default", geely["id"], depth=2)
     nodes = {n["name"]: n for n in graph["nodes"]}
     edges = {(e["relation_type"], e["from"]["name"], e["to"]["name"])
              for e in graph["edges"]}
 
-    assert {"HT-2025-0031", "HT-2025-0044", "5G 专网", "联通云"} <= set(nodes)
-    assert ("sign", "吉利汽车", "HT-2025-0031") in edges
+    assert {"HT-2025-0031", "HT-2025-0044", "5G 专网", "行业云"} <= set(nodes)
+    assert ("sign", "长风汽车集团", "HT-2025-0031") in edges
     assert ("include", "HT-2025-0031", "5G 专网") in edges
 
 
@@ -334,14 +334,14 @@ def test_customer_360_scenario():
     ontology.seed_schema_if_empty()
     ontology.seed_crm_demo_if_empty()
 
-    out = ontology.customer_360("default", "吉利汽车")
-    assert out["customer"]["name"] == "吉利汽车"
+    out = ontology.customer_360("default", "长风汽车集团")
+    assert out["customer"]["name"] == "长风汽车集团"
     assert [x["name"] for x in out["account_owners"]] == ["万仁刚"]
     assert {x["name"] for x in out["contacts"]} == {"李总监", "王工"}
     assert {x["name"] for x in out["projects"]} == {
         "极氪工厂 5G 专网二期", "车联网数据合规平台", "视频云园区安防扩容"}
     assert "HT-2025-0031" in {x["name"] for x in out["contracts"]}
-    assert "联通云" in {x["name"] for x in out["products"]}
+    assert "行业云" in {x["name"] for x in out["products"]}
     assert any("-签约->" in p["text"] for p in out["relation_paths"])
 
 
@@ -350,13 +350,13 @@ def test_customer_360_zero_run():
     ontology.seed_schema_if_empty()
     ontology.seed_crm_demo_if_empty()
 
-    out = ontology.customer_360("default", "零跑汽车")
+    out = ontology.customer_360("default", "启元新能源汽车")
     assert [x["name"] for x in out["account_owners"]] == ["万仁刚"]
     assert [x["name"] for x in out["contacts"]] == ["陈经理"]
     assert {x["name"] for x in out["contracts"]} == {
         "HT-2025-0089", "HT-2026-0007"}
     assert {x["name"] for x in out["products"]} == {
-        "SD-WAN 智选专线", "联通云"}
+        "SD-WAN 智选专线", "行业云"}
 
 
 def test_fault_impact_scenario():
@@ -483,10 +483,10 @@ def test_ontology_scenario_tools_are_gated_and_tenant_bound():
     tools = {t.name: t for t in make_ontology_tools(
         None, include_customer_360=True, include_fault_impact=True)}
     customer = _json.loads(tools["ontology_customer_360"].invoke(
-        {"customer_name": "吉利汽车"}))
+        {"customer_name": "长风汽车集团"}))
     fault = _json.loads(tools["ontology_fault_impact"].invoke(
         {"station_name": "BS-003"}))
-    assert customer["customer"]["name"] == "吉利汽车"
+    assert customer["customer"]["name"] == "长风汽车集团"
     assert fault["vip_customers"][0]["name"] == "杭州智造科技"
 
 

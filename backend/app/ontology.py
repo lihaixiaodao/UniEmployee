@@ -16,7 +16,10 @@ import time
 from pathlib import Path
 
 from app import db as dblayer
+from app.logging_setup import get_logger
 from app.paths import db_path
+
+logger = get_logger(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent.parent  # backend/
 DB = db_path("ontology.db")
@@ -225,7 +228,7 @@ SCHEMA_RELATION_TYPES = [
     ("backhaul", "回传", "station", "link", "n:1", "基站经某传输链路回传"),
 ]
 
-# 数据层演示种子：虚拟企业「星云科技」（default 租户）
+# 数据层示例种子：示例组织「星云科技」（default 租户）
 _DEPARTMENTS = [
     ("研发中心", {"function": "产品研发", "head": "王建国", "intro": "负责产品与技术研发"}),
     ("营销中心", {"function": "市场与销售", "head": "李晓芳", "intro": "负责市场开拓与销售"}),
@@ -307,7 +310,7 @@ def seed_schema_if_empty():
             (code, name, frm, to, card, desc, "system", now, now))
     con.commit()
     con.close()
-    print(f"[ontology] 已播种模式层：{len(SCHEMA_ENTITY_TYPES)} 实体类型 / {len(SCHEMA_RELATION_TYPES)} 关系类型")
+    logger.info(f"已播种模式层：{len(SCHEMA_ENTITY_TYPES)} 实体类型 / {len(SCHEMA_RELATION_TYPES)} 关系类型")
 
 
 def backfill_schema_types():
@@ -331,7 +334,7 @@ def backfill_schema_types():
 
 
 def seed_demo_if_empty():
-    """数据层演示种子：仅 default 租户无组织实体时播种（幂等）。"""
+    """数据层示例种子：仅 default 租户无组织实体时播种（幂等）。"""
     con = _conn()
     has_org = con.execute(
         "SELECT 1 FROM entities WHERE entity_type='org' AND tenant_id='default' AND deleted_at IS NULL"
@@ -416,10 +419,10 @@ def seed_demo_if_empty():
 
     con.commit()
     con.close()
-    print("[ontology] 已播种演示数据：星云科技（5 部门 / 6 员工 / 4 客户 / 3 项目 / 3 合同 / 4 订单）")
+    logger.info("已播种示例数据：星云科技（5 部门 / 6 员工 / 4 客户 / 3 项目 / 3 合同 / 4 订单）")
 
 
-# 数据层演示种子：网络运营场景「星联通信」（default 租户，与星云科技并存）
+# 数据层示例种子：网络运营场景「星联通信」（default 租户，与星云科技并存）
 _NETOPS_EMPLOYEES = [
     ("李建国", {"title": "网络监控值班长", "phone": "13800001001", "status": "在职"}),
     ("王强", {"title": "装维工程师", "phone": "13800001002", "status": "在职"}),
@@ -452,7 +455,7 @@ _NETOPS_CUSTOMERS = [
 
 
 def seed_netops_demo_if_empty():
-    """网络运营演示种子：default 租户无基站实体时播种（幂等）。
+    """网络运营示例种子：default 租户无基站实体时播种（幂等）。
 
     场景主线：基站退服 → 覆盖片区 → 受影响客户（筛VIP）→ 装维负责人，
     用于展示本体的多跳关系查询能力。
@@ -483,7 +486,7 @@ def seed_netops_demo_if_empty():
     add("org", "星联通信", {
         "industry": "通信运营", "scale": "1000+ 人",
         "address": "杭州市滨江区",
-        "intro": "演示用虚拟运营商，用于网络运营场景（基站/片区/装维/客户保障）展示。"})
+        "intro": "运营商主体，承载网络运营场景（基站/片区/装维/客户保障）的示例数据。"})
     add("department", "网络运营部", {"function": "网络运营与维护", "head": "李建国",
                                     "intro": "负责基站运维、装维调度与客户网络保障"})
     link(ids[("org", "星联通信")], ids[("department", "网络运营部")], "belong_to")
@@ -524,11 +527,11 @@ def seed_netops_demo_if_empty():
 
     con.commit()
     con.close()
-    print("[ontology] 已播种网络运营演示数据：星联通信（4 员工 / 4 基站 / 3 片区 / 5 客户）")
+    logger.info("已播种网络运营示例数据：星联通信（4 员工 / 4 基站 / 3 片区 / 5 客户）")
 
 
 def seed_netops_resources_if_empty():
-    """算网资源演示种子：default 租户无机房实体时播种（幂等）。
+    """算网资源示例种子：default 租户无机房实体时播种（幂等）。
 
     实体名称与 workspace/data/netops_resources.csv 台账严格对齐，
     支撑「台账跑数 + 本体查归属」的交叉分析：
@@ -601,7 +604,7 @@ def seed_netops_resources_if_empty():
 
     con.commit()
     con.close()
-    print("[ontology] 已播种算网资源演示数据：2 机房 / 4 算力节点 / 3 传输链路")
+    logger.info("已播种算网资源示例数据：2 机房 / 4 算力节点 / 3 传输链路")
 
 
 # ---------------- Schema CRUD ----------------
@@ -961,18 +964,18 @@ def delete_relation(tenant_id: str, id_: int) -> None:
 
 
 def seed_crm_demo_if_empty():
-    """客户经理演示种子（浙江联通×吉利汽车）：default 租户无吉利实体时播种（幂等）。
+    """客户经理示例种子（长风汽车集团 / 启元新能源汽车）：default 租户无对应客户实体时播种（幂等）。
 
     与 scripts/generate_xiaoxiao_data.py 的合同/商机台账、examples/demo-geely 客户档案
-    严格对齐。演示主线（多跳关系查询价值）：
+    严格对齐。示例主线（多跳关系查询价值）：
       王工 -maintain→ 合同 -include→ 产品（技术对接人视角的产品清单）
       极氪二期 -correspond_to→ 一期合同（商机与存量合同的联动）
-      吉利/零跑 各自合同 -include→ 联通云（跨客户共同产品能力）
+      长风/启元 各自合同 -include→ 行业云（跨客户共同产品能力）
       李总监 -decide→ 合同/商机（决策链影响分析）
     """
     con = _conn()
     has_geely = con.execute(
-        "SELECT 1 FROM entities WHERE entity_type='customer' AND name='吉利汽车' "
+        "SELECT 1 FROM entities WHERE entity_type='customer' AND name='长风汽车集团' "
         "AND tenant_id='default' AND deleted_at IS NULL"
     ).fetchone()
     if has_geely:
@@ -995,27 +998,27 @@ def seed_crm_demo_if_empty():
             (frm, to, rel, json.dumps(props or {}, ensure_ascii=False), "default", now, now))
 
     # ---- 实体 ----
-    add("customer", "吉利汽车", {
+    add("customer", "长风汽车集团", {
         "industry": "汽车制造（新能源）", "level": "战略VIP", "region": "宁波杭州湾",
-        "intro": "浙江联通战略客户，2023-06 起合作，年通信支出约 600 万元。"})
-    add("customer", "零跑汽车", {
+        "intro": "本方战略客户，2023-06 起合作，年通信支出约 600 万元。"})
+    add("customer", "启元新能源汽车", {
         "industry": "汽车制造（新能源）", "level": "VIP", "region": "杭州",
-        "intro": "浙江联通政企客户，另有智博会新线索在跟进。"})
+        "intro": "本方政企客户，另有行业展会新线索在跟进。"})
     add("contact", "李总监", {
-        "company": "吉利汽车", "title": "数字化中心总监",
+        "company": "长风汽车集团", "title": "数字化中心总监",
         "role": "集团数字化转型决策链核心，管 ICT 预算与供应商准入"})
     add("contact", "王工", {
-        "company": "吉利汽车", "title": "信息化部网络运维主管",
+        "company": "长风汽车集团", "title": "信息化部网络运维主管",
         "role": "联通服务日常技术接口人，要求 P1 故障 15 分钟响应"})
     add("contact", "陈经理", {
-        "company": "零跑汽车", "title": "数字化部经理", "role": "对接人"})
+        "company": "启元新能源汽车", "title": "数字化部经理", "role": "对接人"})
     add("employee", "万仁刚", {
         "title": "客户经理（解决方案顾问）", "department": "政企客户部"})
 
     for code, props in {
         "HT-2025-0031": {"product": "5G 专网（杭州湾制造基地）", "amount_wan": 320.0,
                           "expire_date": "2026-10-05", "status": "服务中"},
-        "HT-2025-0044": {"product": "联通云（车联网数据平台承载）", "amount_wan": 150.0,
+        "HT-2025-0044": {"product": "行业云（车联网数据平台承载）", "amount_wan": 150.0,
                           "expire_date": "2026-11-20", "status": "服务中"},
         "HT-2026-0012": {"product": "MPLS-VPN 专线（全国 9 个基地互联）", "amount_wan": 96.0,
                           "expire_date": "2027-03-31", "status": "服务中"},
@@ -1023,7 +1026,7 @@ def seed_crm_demo_if_empty():
                           "expire_date": "2027-06-30", "status": "服务中"},
         "HT-2025-0089": {"product": "SD-WAN 智选专线", "amount_wan": 42.0,
                           "expire_date": "2026-09-28", "status": "服务中"},
-        "HT-2026-0007": {"product": "联通云（研发桌面云）", "amount_wan": 75.0,
+        "HT-2026-0007": {"product": "行业云（研发桌面云）", "amount_wan": 75.0,
                           "expire_date": "2027-05-31", "status": "服务中"},
     }.items():
         add("contract", code, props)
@@ -1040,7 +1043,7 @@ def seed_crm_demo_if_empty():
 
     for name, props in {
         "5G 专网": {"category": "连接通信", "scene": "产线 AGV 调度 / 视觉质检回传"},
-        "联通云": {"category": "计算服务", "scene": "车联网数据平台 / 研发桌面云承载"},
+        "行业云": {"category": "计算服务", "scene": "车联网数据平台 / 研发桌面云承载"},
         "MPLS-VPN 专线": {"category": "组网", "scene": "多基地互联"},
         "物联网芯模服务": {"category": "物联网", "scene": "车联网前装模组"},
         "SD-WAN 智选专线": {"category": "组网", "scene": "分支互联"},
@@ -1050,24 +1053,24 @@ def seed_crm_demo_if_empty():
 
     # ---- 关系 ----
     # 联系人 ↔ 客户
-    link(ids[("contact", "李总监")], ids[("customer", "吉利汽车")], "belongs_to")
-    link(ids[("contact", "王工")], ids[("customer", "吉利汽车")], "belongs_to")
-    link(ids[("contact", "陈经理")], ids[("customer", "零跑汽车")], "belongs_to")
+    link(ids[("contact", "李总监")], ids[("customer", "长风汽车集团")], "belongs_to")
+    link(ids[("contact", "王工")], ids[("customer", "长风汽车集团")], "belongs_to")
+    link(ids[("contact", "陈经理")], ids[("customer", "启元新能源汽车")], "belongs_to")
     # 客户经理跟进
-    link(ids[("employee", "万仁刚")], ids[("customer", "吉利汽车")], "follow_up")
-    link(ids[("employee", "万仁刚")], ids[("customer", "零跑汽车")], "follow_up")
+    link(ids[("employee", "万仁刚")], ids[("customer", "长风汽车集团")], "follow_up")
+    link(ids[("employee", "万仁刚")], ids[("customer", "启元新能源汽车")], "follow_up")
     # 签约：客户 → 合同
     for contract in ("HT-2025-0031", "HT-2025-0044", "HT-2026-0012", "HT-2026-0033"):
-        link(ids[("customer", "吉利汽车")], ids[("contract", contract)], "sign")
+        link(ids[("customer", "长风汽车集团")], ids[("contract", contract)], "sign")
     for contract in ("HT-2025-0089", "HT-2026-0007"):
-        link(ids[("customer", "零跑汽车")], ids[("contract", contract)], "sign")
+        link(ids[("customer", "启元新能源汽车")], ids[("contract", contract)], "sign")
     # 合同 → 产品（包含）
     link(ids[("contract", "HT-2025-0031")], ids[("product", "5G 专网")], "include")
-    link(ids[("contract", "HT-2025-0044")], ids[("product", "联通云")], "include")
+    link(ids[("contract", "HT-2025-0044")], ids[("product", "行业云")], "include")
     link(ids[("contract", "HT-2026-0012")], ids[("product", "MPLS-VPN 专线")], "include")
     link(ids[("contract", "HT-2026-0033")], ids[("product", "物联网芯模服务")], "include")
     link(ids[("contract", "HT-2025-0089")], ids[("product", "SD-WAN 智选专线")], "include")
-    link(ids[("contract", "HT-2026-0007")], ids[("product", "联通云")], "include")
+    link(ids[("contract", "HT-2026-0007")], ids[("product", "行业云")], "include")
     # 角色：联系人 → 合同/商机（决策 vs 技术对接）
     link(ids[("contact", "李总监")], ids[("contract", "HT-2025-0031")], "decide",
          {"role": "预算与签约决策"})
@@ -1079,7 +1082,7 @@ def seed_crm_demo_if_empty():
          {"role": "技术对接人"})
     # 商机 → 客户 / 存量合同
     for proj in ("极氪工厂 5G 专网二期", "车联网数据合规平台", "视频云园区安防扩容"):
-        link(ids[("project", proj)], ids[("customer", "吉利汽车")], "serve")
+        link(ids[("project", proj)], ids[("customer", "长风汽车集团")], "serve")
     link(ids[("project", "极氪工厂 5G 专网二期")],
          ids[("contract", "HT-2025-0031")], "correspond_to")
 

@@ -18,7 +18,7 @@ from langgraph.store.sqlite import AsyncSqliteStore
 
 def _spec() -> EmployeeSpec:
     return EmployeeSpec(
-        id="xiaoshu", name="小数", model="openai:deepseek-v4-flash",
+        id="xiaoshu", name="数据分析专家", model="openai:deepseek-v4-flash",
         persona="你是数据分析助手",
     )
 

@@ -18,6 +18,9 @@ import jwt
 from fastapi import Cookie, Depends, Header, HTTPException
 
 from app import catalog
+from app.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 # 关键：SECRET 在模块导入时读取，而 main.py 的 load_dotenv 在 lifespan 才执行，
 # 若不在此处先加载 .env，JWT 将永远用默认弱密钥签名（可被伪造 token）。
@@ -27,9 +30,30 @@ _env_cand = Path(__file__).resolve().parent.parent.parent / ".env"
 if not _env_cand.exists():
     _env_cand = Path(__file__).resolve().parent.parent / ".env"  # 兼容旧布局
 dotenv.load_dotenv(_env_cand)
-SECRET = os.environ.get("JWT_SECRET", "change-me-in-prod")
-if SECRET == "change-me-in-prod":
-    print("[security] 警告：JWT_SECRET 未配置，正在使用默认弱密钥！请在 .env 设置 JWT_SECRET")
+
+def _is_production() -> bool:
+    return os.environ.get("APP_ENV", "").strip().lower() in {"prod", "production"}
+
+
+# 默认/占位密钥一律视为「未配置」。生产环境缺失或过短直接拒绝启动：
+# 用默认密钥签发 token，等同于允许任何拿到源码的人伪造任意用户的登录凭证。
+_PLACEHOLDER_SECRETS = {"", "change-me-in-prod", "change-me-to-a-long-random-secret"}
+_MIN_SECRET_LEN = 32
+
+SECRET = os.environ.get("JWT_SECRET", "").strip()
+if SECRET in _PLACEHOLDER_SECRETS:
+    if _is_production():
+        raise RuntimeError(
+            "生产环境未配置 JWT_SECRET，拒绝启动。请用 `openssl rand -hex 32` "
+            "生成后写入 .env；使用默认密钥等同于允许任何人伪造登录凭证。"
+        )
+    SECRET = "change-me-in-prod"
+    logger.warning("JWT_SECRET 未配置，正在使用默认弱密钥（仅限开发环境，禁止用于生产）")
+elif _is_production() and len(SECRET) < _MIN_SECRET_LEN:
+    raise RuntimeError(
+        f"生产环境 JWT_SECRET 仅 {len(SECRET)} 字符，短于要求的 {_MIN_SECRET_LEN} 字符，拒绝启动"
+    )
+
 ALGO = "HS256"
 EXPIRE_HOURS = int(os.environ.get("JWT_EXPIRE_HOURS", "24"))
 SESSION_COOKIE = "ue_session"

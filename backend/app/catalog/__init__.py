@@ -66,6 +66,7 @@ from .ai_models import (
     init_tables as ai_models_init, list_models, get_model, create_model,
     update_model, delete_model, set_default_model, get_default_model,
     resolve_runtime_model, seed_default_model_if_empty, SUPPLIER_NAMES,
+    with_masked_secret, mask_secret,
 )
 
 __all__ = [
@@ -105,4 +106,5 @@ __all__ = [
     "ai_models_init", "list_models", "get_model", "create_model",
     "update_model", "delete_model", "set_default_model", "get_default_model",
     "resolve_runtime_model", "seed_default_model_if_empty", "SUPPLIER_NAMES",
+    "with_masked_secret", "mask_secret",
 ]

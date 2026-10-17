@@ -15,8 +15,11 @@
   （存 `inner_thread`）→ 审批人决策后，`decision` 端点先 `Command(resume=...)`
   恢复内层图执行 `execute_refund` 拿到 summary，再 `Command(resume=summary)`
   恢复外层 agent（把工具调用结果喂回）。整条链路确定性、可恢复。
-- 老实现里 `MOCK_ORDERS` 硬编码订单数据（见 README 路线图 Point 3：
-  后续应改为经 Connector 取数）。本文件只负责流程编排，不持有数据源。
+- 本文件只负责流程编排，不持有数据源：订单数据从外部 JSON 数据包加载，
+  目录由 REFUND_DATA_DIR 指定（默认 backend/seeddata/refund）。接入真实
+  订单系统时替换数据源即可，**节点与工具签名不变**。
+- 数据不可用时不回退到内置假数据，而是在 validate_order 节点终止并明确报错
+  ——退款是有真实副作用的动作，不可用必须显性化，不能拿编造的金额去退款。
 
 说明：本模块不再在 import 期编译全局图，而是提供 `get_refund_graph(checkpointer)`
 （按 checkpointer 实例缓存）与 `make_start_refund(checkpointer)` 工厂，
@@ -24,25 +27,55 @@
 """
 from typing import TypedDict
 import hashlib
+import json
+import os
+from datetime import date
+from pathlib import Path
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import interrupt, Command
 
 # ---------------------------------------------------------------------------
-# 演示用硬编码订单（后续替换为 Connector 数据源，见 README 路线图）
+# 订单数据源：外部 JSON 数据包，与 CRM 连接器的数据包物理分离、字段同源
 # ---------------------------------------------------------------------------
-MOCK_ORDERS = {
-    "O12345": {"product": "X1 智能音箱", "amount": 399.0, "status": "已签收", "days_since_sign": 3},
-    "O12346": {"product": "S2 智能台灯", "amount": 199.0, "status": "已签收", "days_since_sign": 10},
-    "O12347": {"product": "X1 智能音箱", "amount": 399.0, "status": "运输中", "days_since_sign": 0},
-    "O12348": {"product": "W5 智能手表（硅胶版）", "amount": 599.0, "status": "已签收", "days_since_sign": 1},
-    "O12349": {"product": "H7 降噪耳机", "amount": 499.0, "status": "已签收", "days_since_sign": 5},
-    "O12350": {"product": "P3 智能投影仪", "amount": 2999.0, "status": "运输中", "days_since_sign": 0},
-    "O12351": {"product": "S2 Pro 双灯头台灯", "amount": 299.0, "status": "已签收", "days_since_sign": 20},
-    "O12352": {"product": "X1 智能音箱（白色）", "amount": 399.0, "status": "已签收", "days_since_sign": 60},
-    "O12353": {"product": "H7 Pro 降噪耳机", "amount": 699.0, "status": "已签收", "days_since_sign": 2},
-    "O12354": {"product": "W5 Pro eSIM 手表", "amount": 899.0, "status": "已签收", "days_since_sign": 14},
-}
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "seeddata" / "refund"
+REFUND_DATA_DIR = Path(os.environ.get("REFUND_DATA_DIR", "").strip() or _DEFAULT_DATA_DIR)
+
+
+def _load_orders() -> tuple[dict, str]:
+    """加载订单数据包，返回 (订单表, 错误信息)；二者必有其一为空。
+
+    `days_since_sign` 由 `sign_date` 在运行时计算，不落库派生值——否则数据
+    包放久了，所有订单都会变成「签收已 N 天」，示例和账期判断一起失真。
+    """
+    path = REFUND_DATA_DIR / "orders.json"
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        return {}, f"数据文件缺失：{path}"
+    except json.JSONDecodeError as exc:
+        return {}, f"数据文件不是合法 JSON：{path}（第 {exc.lineno} 行）"
+    if not isinstance(raw, dict):
+        return {}, f"数据文件格式错误（顶层应为对象）：{path}"
+
+    today = date.today()
+    orders: dict = {}
+    for order_id, order in raw.items():
+        if str(order_id).startswith("_") or not isinstance(order, dict):
+            continue
+        days = 0
+        sign_date = order.get("sign_date")
+        if sign_date:
+            try:
+                days = max(0, (today - date.fromisoformat(str(sign_date))).days)
+            except ValueError:
+                days = 0
+        orders[order_id] = {**order, "days_since_sign": days}
+    return orders, ""
+
+
+ORDERS, ORDER_DATA_ERROR = _load_orders()
 
 
 class RefundState(TypedDict, total=False):
@@ -57,8 +90,11 @@ class RefundState(TypedDict, total=False):
 
 
 def validate_order(state: RefundState) -> RefundState:
-    """校验订单：存在 + 已签收 + 7 天内。不通过则终止（无副作用）。"""
-    order = MOCK_ORDERS.get(state["order_id"])
+    """校验订单：数据源可用 + 存在 + 已签收 + 7 天内。不通过则终止（无副作用）。"""
+    if ORDER_DATA_ERROR:
+        return {"summary": f"流程终止：订单数据源不可用（{ORDER_DATA_ERROR}），"
+                           f"请由管理员配置 REFUND_DATA_DIR 后重试。"}
+    order = ORDERS.get(state["order_id"])
     if not order:
         return {"summary": f"流程终止：订单 {state['order_id']} 不存在。"}
     if order["status"] != "已签收":

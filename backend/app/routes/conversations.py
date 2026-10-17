@@ -2,11 +2,12 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from langgraph.types import Command
 
-from app import attachments, auth, runtime, approvals, conversations, catalog, traces, agent_runs
+from app import (attachments, auth, runtime, approvals, conversations, catalog,
+                 traces, agent_runs, audit)
 from app.models import MessageIn, DecisionIn, ConversationUpdateIn
 from app.streaming import employee_of, reconstruct, conv_emp_map, conv_owner_map
 from app.streaming import conv_tenant_map
@@ -318,7 +319,7 @@ async def get_trace_detail(run_id: str, context=Depends(auth.get_auth_context)):
 
 
 @router.post("/approvals/{approval_id}/decision")
-async def decide(approval_id: str, body: DecisionIn,
+async def decide(approval_id: str, body: DecisionIn, request: Request,
                  context=Depends(auth.get_auth_context)):
     record = approvals.get(approval_id)
     if not record or record["status"] != "pending":
@@ -357,6 +358,21 @@ async def decide(approval_id: str, body: DecisionIn,
     except Exception:
         agent_runs.finish(run["id"], "error", "审批恢复启动失败")
         raise
+    # 审批是会产生真实副作用的动作（退款/建工单/发布），批准与拒绝都必须留痕：
+    # 事后必须能回答「这笔退款是谁批的、什么时候批的、批的是哪一单」。
+    # 快照只存定位所需的字段，不落完整对话内容。
+    audit.log(
+        "approve" if body.decision == "approve" else "reject",
+        "approval", approval_id,
+        admin={"id": context.user_id, "username": context.username,
+               "tenant_id": context.tenant_id},
+        request=request,
+        before={"status": "pending",
+                "employee_id": record.get("employee_id", ""),
+                "conversation_id": record.get("conversation_id", "")},
+        after={"status": record.get("status", ""), "decision": body.decision},
+        tenant_id=context.tenant_id,
+    )
     return StreamingResponse(
         agent_runs.subscribe(run["id"]), media_type="text/event-stream",
         headers={"X-Run-ID": run["id"]},

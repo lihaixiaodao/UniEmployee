@@ -65,7 +65,7 @@ description: 竞品深度对标分析技能。当用户需要竞品分析/竞品
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>竞品对标分析 · 声湃科技 vs 智选智能硬件</title>
+<title>竞品对标分析 · 竞品 A vs 本企业</title>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }

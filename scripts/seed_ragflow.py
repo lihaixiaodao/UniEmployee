@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""把项目内置的模拟知识数据灌入 RAGFlow dataset（幂等，可重复执行）。
+"""把项目内置的示例知识数据灌入 RAGFlow dataset（幂等，可重复执行）。
+
+员工手册数据集名取自 ENTERPRISE_NAME（未配置时为「本企业员工手册」），
+与员工 persona 的 ${ENTERPRISE_NAME} 保持同一口径。
 
 数据源 → 目标：
   catalog.db kb_entries kb_product（30 条产品 FAQ）         → 「产品知识库」
-  catalog.db kb_entries kb_employee_handbook（34 条员工手册）→ 「智选员工手册」（不存在则自动新建）
-  crm_server.py CUSTOMERS/ORDERS（10 位客户档案）           → 「客户档案」
+  catalog.db kb_entries kb_employee_handbook（34 条员工手册）→ 「<企业名>员工手册」（不存在则自动新建）
+  crm_server.py 数据包（客户档案）                          → 「客户档案」
 
-员工手册灌完后，把 hrbp（综合人力专员）的知识库绑定从「综合人力知识库」
-切换到「智选员工手册」，与现有制度公文类数据集隔离。
+员工手册灌完后，把 hrbp（人力资源服务专员）的知识库绑定从旧手册库切到
+当前企业主体对应的手册，与现有制度公文类数据集隔离。
 
 用法：PYTHONPATH=backend .venv/bin/python scripts/seed_ragflow.py
 """
@@ -34,14 +37,25 @@ API_KEY = ragflow_client._api_key()
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 # 数据集（按名称定位，与 catalog 中 backfill 的 name 约定一致）
+def enterprise_name() -> str:
+    """知识库与文档中的本企业主体名。
+
+    与员工 persona 的 ${ENTERPRISE_NAME} 同源：企业部署时只需改这一个配置，
+    知识库名、员工手册标题随之对齐，不会在界面上留下别家公司的名字。
+    """
+    return os.environ.get("ENTERPRISE_NAME", "").strip() or "本企业"
+
+
 DS_PRODUCT = "产品知识库"
 DS_CUSTOMER = "客户档案"
-DS_HANDBOOK = "智选员工手册"
+DS_HANDBOOK = f"{enterprise_name()}员工手册"
+DS_HANDBOOK_DESC = (f"{enterprise_name()}员工手册"
+                    f"（示例内容，接入时替换为企业真实手册）")
 
 KB_PRODUCT_ID = "kb_product"
 KB_HANDBOOK_ID = "kb_employee_handbook"
-# hrbp 原绑定的旧版制度数据集名（切换来源）
-DS_HANDBOOK_OLD = "综合人力知识库"
+# 历史知识库名：手册改名后旧条目会变成孤儿库，统一解绑，避免界面上出现两个手册
+DS_HANDBOOK_LEGACY = ("综合人力知识库", "智选员工手册")
 
 
 def rf(method: str, path: str, **kw) -> dict:
@@ -200,22 +214,23 @@ def upload_into(dataset_id: str, name: str, files: list[tuple[str, bytes]]) -> i
 
 
 def switch_hrbp_handbook(dataset_id: str) -> None:
-    """把 hrbp 的知识库绑定从「综合人力知识库」切换到「智选员工手册」。"""
+    """把 hrbp 的知识库绑定切到当前企业主体对应的员工手册。"""
     con = sqlite3.connect(db_path("catalog.db"))
     con.row_factory = sqlite3.Row
     cur = con.cursor()
     cur.execute(
         "INSERT OR IGNORE INTO knowledge_bases(id,name,description,ragflow_dataset_id) "
         "VALUES(?,?,?,?)",
-        (dataset_id, DS_HANDBOOK, "智选智能硬件有限公司员工手册（模拟数据）", dataset_id),
+        (dataset_id, DS_HANDBOOK, DS_HANDBOOK_DESC, dataset_id),
     )
-    old = cur.execute(
-        "SELECT id FROM knowledge_bases WHERE name=? AND deleted_at IS NULL", (DS_HANDBOOK_OLD,)
-    ).fetchone()
+    placeholders = ",".join("?" * len(DS_HANDBOOK_LEGACY))
+    legacy = cur.execute(
+        "SELECT id FROM knowledge_bases WHERE name IN (" + placeholders + ") "
+        "AND deleted_at IS NULL", DS_HANDBOOK_LEGACY).fetchall()
     changed = False
-    if old:
+    for row in legacy:
         cur.execute(
-            "DELETE FROM employee_kbs WHERE employee_id='hrbp' AND kb_id=?", (old["id"],)
+            "DELETE FROM employee_kbs WHERE employee_id='hrbp' AND kb_id=?", (row["id"],)
         )
         changed = True
     cur.execute(
@@ -227,7 +242,7 @@ def switch_hrbp_handbook(dataset_id: str) -> None:
     )
     con.commit()
     con.close()
-    print(f"  [绑定] hrbp 知识库已切换到「{DS_HANDBOOK}」（原「{DS_HANDBOOK_OLD}」"
+    print(f"  [绑定] hrbp 知识库已切换到「{DS_HANDBOOK}」（历史手册库已解绑"
           f"{'解绑' if changed else '未绑定'}）")
 
 
@@ -235,7 +250,7 @@ def main() -> None:
     if not API_KEY:
         print("错误：未配置 RAGFLOW_API_KEY（.env），请先配置再运行。")
         sys.exit(1)
-    print("== 灌入模拟知识数据到 RAGFlow ==\n")
+    print("== 灌入示例知识数据到 RAGFlow ==\n")
     datasets = {d["name"]: d["id"] for d in list_datasets()}
 
     for name, build, is_handbook in (
@@ -248,7 +263,7 @@ def main() -> None:
         if name in datasets:
             dataset_id = datasets[name]
         elif is_handbook:
-            dataset_id = ensure_dataset(name, "智选智能硬件有限公司员工手册（模拟数据）")
+            dataset_id = ensure_dataset(name, DS_HANDBOOK_DESC)
         else:
             print(f"  [跳过] RAGFlow 中不存在数据集「{name}」，请先在界面创建或改脚本配置。")
             continue

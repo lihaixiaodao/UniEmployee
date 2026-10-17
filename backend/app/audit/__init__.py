@@ -10,6 +10,9 @@ import json
 import time
 
 from .db import _conn, init_tables  # noqa: F401  init_tables 随 catalog.init() 调用
+from ..logging_setup import get_logger, request_id_var
+
+logger = get_logger(__name__)
 
 
 def _json(value) -> str | None:
@@ -23,32 +26,47 @@ def _json(value) -> str | None:
 
 def log(action: str, obj_type: str, obj_id: str = "",
         admin: dict | None = None, request=None,
-        before=None, after=None):
-    """记录一条管理端变更。action: create/update/delete；before/after 为快照。"""
+        before=None, after=None, tenant_id: str = ""):
+    """记录一条管理端变更。action: create/update/delete；before/after 为快照。
+
+    tenant_id 缺省时从操作人身上取，保证多租户上线后审计可隔离；
+    request_id 让这条留痕能和同一次请求的应用日志对齐。
+    """
     ip = ""
     if request is not None:
         ip = request.client.host if request.client else ""
         fwd = request.headers.get("x-forwarded-for", "")
         if fwd:
             ip = fwd.split(",")[0].strip()
+    tenant = tenant_id or (admin or {}).get("tenant_id", "") or "default"
     try:
         con = _conn()
         con.execute(
             "INSERT INTO audit_logs(actor_id,actor_name,action,obj_type,obj_id,"
-            "before,after,ip,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            "before,after,ip,created_at,tenant_id,request_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
             ((admin or {}).get("id", ""), (admin or {}).get("username", ""),
              action, obj_type, obj_id,
              _json(before), _json(after), ip,
-             time.strftime("%Y-%m-%d %H:%M:%S")))
+             time.strftime("%Y-%m-%d %H:%M:%S"),
+             tenant, request_id_var.get()))
         con.commit()
         con.close()
-    except Exception as e:  # 审计写失败不阻断业务
-        print(f"[audit] 写审计日志失败: {type(e).__name__}: {e}")
+    except Exception as e:
+        # 审计是旁路，写库异常不阻断业务；但必须可感知——审计静默丢失
+        # 等于出事时没有证据链，这类失败要能被日志告警捞到。
+        logger.error("写审计日志失败：%s %s（action=%s obj=%s/%s）",
+                     type(e).__name__, e, action, obj_type, obj_id)
 
 
 def list_logs(limit: int = 100, offset: int = 0, obj_type: str = "",
-              actor_id: str = "", action: str = "") -> tuple[list[dict], int]:
-    """分页查询审计日志，返回 (rows, total)。"""
+              actor_id: str = "", action: str = "",
+              tenant_id: str = "") -> tuple[list[dict], int]:
+    """分页查询审计日志，返回 (rows, total)。
+
+    传入 tenant_id 时按租户过滤：审计记录本身也必须隔离，否则 A 租户的
+    管理员能在审计页看到 B 租户的操作痕迹。
+    """
     where, params = [], []
     if obj_type:
         where.append("obj_type=?")
@@ -59,6 +77,9 @@ def list_logs(limit: int = 100, offset: int = 0, obj_type: str = "",
     if action:
         where.append("action=?")
         params.append(action)
+    if tenant_id:
+        where.append("tenant_id=?")
+        params.append(tenant_id)
     cond = (" WHERE " + " AND ".join(where)) if where else ""
     con = _conn()
     total = con.execute(

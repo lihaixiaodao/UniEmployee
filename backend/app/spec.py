@@ -33,10 +33,18 @@ class EmployeeSpec(BaseModel):
 
 _ENV_RE = re.compile(r"\$\{(\w+)\}")
 
+# 未配置时的回退值。宁可用中性表述，也不能把 `${XXX}` 字面量带进 system_prompt
+# ——那会让数字员工在对客对话里念出变量名。
+_ENV_DEFAULTS = {"ENTERPRISE_NAME": "本企业"}
+
 
 def _substitute(value):
     if isinstance(value, str):
-        return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
+        return _ENV_RE.sub(
+            lambda m: os.environ.get(m.group(1), "").strip()
+            or _ENV_DEFAULTS.get(m.group(1), m.group(0)),
+            value,
+        )
     if isinstance(value, dict):
         return {k: _substitute(v) for k, v in value.items()}
     if isinstance(value, list):

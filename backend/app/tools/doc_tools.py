@@ -19,6 +19,34 @@ from app.paths import WORKSPACE_DATA
 DATA_DIR = WORKSPACE_DATA        # 文档输出目录
 
 
+def _enterprise_name() -> str:
+    """对客文档中的本企业主体名称。
+
+    由 ENTERPRISE_NAME 配置提供，与员工 YAML 里的 ${ENTERPRISE_NAME} 同源；
+    未配置时退回中性表述，绝不在对客文档里硬编码某个虚构公司名。
+    """
+    return os.environ.get("ENTERPRISE_NAME", "").strip() or "本企业"
+
+
+def _service_lines() -> list[str]:
+    """对客文档中的售后联系信息，全部由配置项提供。
+
+    未配置的条目直接不输出——文档里出现 400 开头的占位号码或编造地址，
+    比不写更伤可信度。
+    """
+    lines = [
+        "整机保修 1 年，主要部件保修 2 年",
+        "保修期内非人为损坏免费维修",
+    ]
+    hotline = os.environ.get("ENTERPRISE_SERVICE_HOTLINE", "").strip()
+    if hotline:
+        lines.append(f"客服热线：{hotline}")
+    address = os.environ.get("ENTERPRISE_SERVICE_ADDRESS", "").strip()
+    if address:
+        lines.append(f"维修寄修地址：{address}")
+    return lines
+
+
 @tool
 def generate_solution_doc(
     customer_name: str,
@@ -77,7 +105,7 @@ def generate_solution_doc(
 
     # ---- 封面标题 ----
     title = doc.add_heading("", level=0)
-    run = title.add_run(f"智选智能硬件 · 客户解决方案")
+    run = title.add_run(f"{_enterprise_name()} · 客户解决方案")
     run.font.size = Pt(22)
     run.font.color.rgb = RGBColor(0x1E, 0x40, 0x73)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -166,20 +194,14 @@ def generate_solution_doc(
     # ---- 五、售后服务承诺（固定模板） ----
     doc.add_heading("五、售后服务承诺", level=1)
     doc.add_paragraph("本方案所含产品均享受以下售后服务：")
-    services = [
-        "整机保修 1 年，主要部件保修 2 年",
-        "保修期内非人为损坏免费维修",
-        "客服热线：400-800-1234（工作日 9:00-21:00）",
-        "维修寄修地址：深圳市南山区科技园南区 A3 栋 2F",
-    ]
-    for s in services:
+    for s in _service_lines():
         doc.add_paragraph(s, style="List Bullet")
 
     # ---- 页脚声明 ----
     doc.add_paragraph()
     footer_p = doc.add_paragraph()
     footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = footer_p.add_run("— 本方案由智选智能硬件客户经理自动生成，仅供参考 —")
+    run = footer_p.add_run(f"— 本方案由{_enterprise_name()}客户经理自动生成，仅供参考 —")
     run.font.size = Pt(9)
     run.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
     run.italic = True

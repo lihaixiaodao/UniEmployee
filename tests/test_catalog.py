@@ -131,7 +131,7 @@ def test_backfill_employees_if_missing_adds_netops():
     """老库补种：net-ops 员工缺失时由 backfill 补回（含技能/工具/本体工具）。"""
     catalog.init()
     catalog.seed_if_empty()  # 新库播种已含 net-ops
-    assert catalog.get_employee_config("net-ops")["name"] == "小网"
+    assert catalog.get_employee_config("net-ops")["name"] == "算网运营专家"
     assert "fault-impact-analysis" in catalog.get_employee_config("net-ops")["skills"]
 
     # 模拟老库（无 net-ops）：硬删相关行后 backfill 应补回
@@ -147,7 +147,7 @@ def test_backfill_employees_if_missing_adds_netops():
 
     catalog.backfill_employees_if_missing()
     cfg = catalog.get_employee_config("net-ops")
-    assert cfg is not None and cfg["name"] == "小网"
+    assert cfg is not None and cfg["name"] == "算网运营专家"
     assert "ontology_find_entities" in cfg["tools"]
     assert "ontology_expand" in cfg["tools"]
     assert "ontology_find_paths" in cfg["tools"]
@@ -162,7 +162,7 @@ def test_backfill_employees_if_missing_adds_market_intel():
     catalog.init()
     catalog.seed_if_empty()  # 新库播种已含 market-intel
     cfg = catalog.get_employee_config("market-intel")
-    assert cfg["name"] == "小察"
+    assert cfg["name"] == "市场情报分析师"
     assert "market-daily-brief" in cfg["skills"]
 
     # 模拟老库（无 market-intel）：硬删相关行后 backfill 应补回
@@ -179,7 +179,7 @@ def test_backfill_employees_if_missing_adds_market_intel():
     catalog.backfill_employees_if_missing()
     catalog.backfill_connectors()
     cfg = catalog.get_employee_config("market-intel")
-    assert cfg is not None and cfg["name"] == "小察"
+    assert cfg is not None and cfg["name"] == "市场情报分析师"
     assert set(cfg["skills"]) >= {"market-daily-brief", "competitor-deep-dive",
                                   "market-alert-triage"}
     assert "bocha_search" in cfg["tools"]

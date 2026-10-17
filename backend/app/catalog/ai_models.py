@@ -67,6 +67,35 @@ def _row(r):
     return d
 
 
+def mask_secret(value: str, keep: int = 4) -> str:
+    """密钥掩码：只保留末 keep 位，其余打星。
+
+    明文 api_key 一旦进入 HTTP 响应或审计表，就会顺着前端日志、浏览器
+    DevTools、日志采集和数据库备份一路扩散——这些地方的泄露面远大于
+    catalog.db 本身，而且几乎无法回收。
+    """
+    if not value:
+        return ""
+    value = str(value)
+    if len(value) <= keep:
+        return "*" * len(value)
+    return "*" * (len(value) - keep) + value[-keep:]
+
+
+def with_masked_secret(row: dict | None) -> dict | None:
+    """返回一份 api_key 已掩码的副本，用于一切对外输出（HTTP 响应 / 审计留痕）。
+
+    内部消费方（resolve_runtime_model 供模型 SDK 初始化）继续走明文 _row，
+    不被本函数影响。
+    """
+    if not row:
+        return row
+    d = dict(row)
+    if d.get("api_key"):
+        d["api_key"] = mask_secret(d["api_key"])
+    return d
+
+
 def list_models(keyword="", model_type=None):
     """列表查询，支持按名称/base_model 关键词和模型类型筛选。"""
     where, params = [], []

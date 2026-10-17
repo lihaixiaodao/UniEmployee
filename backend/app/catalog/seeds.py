@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import time
@@ -13,6 +14,9 @@ from .users import create_user, get_user_by_username, set_must_change_password, 
 from .employees import list_employees_meta
 from app.spec import load_spec
 from app.demo_isolation import DEMO_CONNECTOR_IDS, is_production
+from app.logging_setup import get_logger
+
+logger = get_logger(__name__)
 
 
 def _skill_desc(skill_dir: Path) -> str:
@@ -653,7 +657,7 @@ def backfill_employees_if_missing():
     con.commit()
     con.close()
     if added:
-        print(f"[seed] 已为老库补种内置员工：{', '.join(added)}")
+        logger.info(f"已为老库补种内置员工：{', '.join(added)}")
 
 
 # net-ops 升级前后 persona 的特征句：用于判断老库中的 persona 是否被管理员改过
@@ -708,11 +712,11 @@ def backfill_netops_upgrade():
         cur.execute(
             "UPDATE employees SET role=?, persona=?, updated_at=? WHERE id='net-ops'",
             (spec.role, spec.persona, time.strftime("%Y-%m-%d %H:%M:%S")))
-        print("[seed] net-ops 已升级为「算网运营专家」（persona 同步为新版）")
+        logger.info("net-ops 已升级为「算网运营专家」（persona 同步为新版）")
     elif _NETOPS_NEW_PERSONA_MARKER in persona:
         pass  # 已是新版
     else:
-        print("[seed] net-ops persona 已被管理员修改，跳过自动升级（技能/SOP 绑定已补齐）")
+        logger.info("net-ops persona 已被管理员修改，跳过自动升级（技能/SOP 绑定已补齐）")
 
     con.commit()
     con.close()
@@ -754,11 +758,11 @@ def backfill_sandbox_backend():
         cur.execute(
             "UPDATE employees SET persona=?, updated_at=? WHERE id='net-ops'",
             (spec.persona, time.strftime("%Y-%m-%d %H:%M:%S")))
-        print("[seed] net-ops persona 已同步为沙箱版（/datasets/ 路径）")
+        logger.info("net-ops persona 已同步为沙箱版（/datasets/ 路径）")
     elif "/datasets/" in persona:
         pass  # 已是新版
     else:
-        print("[seed] net-ops persona 已被管理员修改，跳过路径同步（backend 已切 sandbox）")
+        logger.info("net-ops persona 已被管理员修改，跳过路径同步（backend 已切 sandbox）")
     con.commit()
     con.close()
 
@@ -794,7 +798,7 @@ def backfill_workspace_paths():
                         continue
                     shutil.move(str(item), str(target))
             except Exception as e:
-                print(f"[migrate] uploads 迁移 {uid_dir.name} 失败（忽略）："
+                logger.warning(f"uploads 迁移 {uid_dir.name} 失败（忽略）："
                       f"{type(e).__name__}: {e}")
         # 旧 uploads 目录留着（已空则清理，非空保留以备排查）
         try:
@@ -811,7 +815,7 @@ def backfill_workspace_paths():
             try:
                 shutil.move(str(src), str(dst))
             except Exception as e:
-                print(f"[migrate] {csv_name} 迁移失败（忽略）："
+                logger.warning(f"{csv_name} 迁移失败（忽略）："
                       f"{type(e).__name__}: {e}")
 
 
@@ -827,7 +831,7 @@ def backfill_ragflow_knowledge_bases():
     try:
         datasets = ragflow_client.list_datasets()
     except Exception as e:
-        print(f"[seed] RAGFlow 知识库同步失败，已跳过：{type(e).__name__}: {e}")
+        logger.warning(f"RAGFlow 知识库同步失败，已跳过：{type(e).__name__}: {e}")
         return
     dataset_ids = [d["id"] for d in datasets if d.get("id")]
     if not dataset_ids:
@@ -880,8 +884,8 @@ def backfill_ragflow_knowledge_bases():
 # 内置员工知识库指派：按 RAGFlow 数据集名称绑定（dataset id 随环境变化，
 # 名称是稳定约定；只在数据集存在时补绑，不覆盖管理员手动增删）。
 EMPLOYEE_KB_ASSIGN = {
-    "xiaoxiao": ["浙江联通自研产品Wiki", "产品知识库", "客户档案"],
-    "unicom-presale": ["浙江联通业务知识库"],
+    "xiaoxiao": ["自研产品 Wiki", "产品知识库", "客户档案"],
+    "unicom-presale": ["业务知识库"],
     "net-ops": ["算网运营知识库"],
 }
 
@@ -931,7 +935,7 @@ def backfill_subagents_if_empty():
             cur.execute("UPDATE employees SET subagents=?, subagent_policy=? WHERE id=?",
                         (json.dumps(new_subagents, ensure_ascii=False), new_policy, emp["id"]))
             con.commit()
-            print(f"[seed] 已为员工 {emp['id']} 补种子子代理配置/策略")
+            logger.info(f"已为员工 {emp['id']} 补种子子代理配置/策略")
         con.close()
 
 
@@ -958,21 +962,49 @@ def seed_assignments_if_empty():
     con.close()
 
 
+_DEFAULT_ADMIN_PASSWORD = "admin123"
+
+
+def _resolve_initial_admin_password() -> tuple[str, bool]:
+    """解析初始管理员口令，返回 (口令, 是否为一次性随机口令)。
+
+    生产环境不接受默认口令：源码是公开的，把 admin/admin123 带进生产等于给
+    全世界留一把钥匙。未显式配置 ADMIN_PASS 时改为随机生成，并强制首登改密。
+    """
+    configured = os.environ.get("ADMIN_PASS", "").strip()
+    if is_production():
+        if configured and configured != _DEFAULT_ADMIN_PASSWORD:
+            return configured, False
+        return secrets.token_urlsafe(24), True
+    return configured or _DEFAULT_ADMIN_PASSWORD, False
+
+
 def seed_admin_if_empty():
-    """确保默认管理员账号可用（.env ADMIN_USER/ADMIN_PASS，默认 admin/admin123）。
+    """确保默认管理员账号可用（.env ADMIN_USER/ADMIN_PASS）。
 
     只负责空库时创建；已存在用户绝不重置密码，避免每次重启把用户改过的
     密码打回默认值（旧实现会无条件对齐 ADMIN_PASS）。"""
     from app.auth import hash_password
     username = os.environ.get("ADMIN_USER", "admin")
-    password = os.environ.get("ADMIN_PASS", "admin123")
+    password, is_temporary = _resolve_initial_admin_password()
 
     if get_user_by_username(username):
         return
     uid = create_user(username, hash_password(password), role="admin", user_id="u_admin",
                       is_emergency_admin=True)
-    print(f"[seed] 已创建初始管理员：{username} / {password}（首次登录须修改密码）")
-    if password == "admin123":
+    # 口令是一次性随机值时必须让运维看到一次，否则账号直接不可达；
+    # 除此之外一律不往日志里写明文口令（容器日志/云日志会长期留存）。
+    if is_temporary:
+        logger.warning(
+            "生产环境未配置 ADMIN_PASS，已为初始管理员 %s 生成一次性随机口令 %s ；"
+            "请立即登录后修改并妥善保存，此口令仅出现在本条日志中。",
+            username, password,
+        )
+    else:
+        logger.info("已创建初始管理员 %s（口令来源：%s）",
+                    username, "ADMIN_PASS 配置" if os.environ.get("ADMIN_PASS", "").strip()
+                    else "开发默认值")
+    if is_temporary or password == _DEFAULT_ADMIN_PASSWORD:
         set_must_change_password(uid, True)
 
 
@@ -982,4 +1014,4 @@ def flag_default_admin_password():
     u = get_user_by_username(os.environ.get("ADMIN_USER", "admin"))
     if u and not u.get("must_change_password") and verify_password("admin123", u["password_hash"]):
         set_must_change_password(u["id"], True)
-        print("[security] admin 仍为默认密码，已标记首登强制改密")
+        logger.warning("admin 仍为默认密码，已标记首登强制改密")

@@ -6,6 +6,7 @@ provider 不是 web 时可通过 /channels/{id}/incoming 接收外部 IM 消息�
 """
 
 import json
+import secrets
 import time
 
 import httpx
@@ -160,9 +161,15 @@ async def incoming_message(channel_id: str, body: ImIncomingMessage):
         raise HTTPException(403, "频道已停用")
     if ch.get("provider", "web") == "web":
         raise HTTPException(400, "Web 频道请使用平台内置聊天")
+    # Webhook 是匿名入口，没有登录态可依赖：未配置 secret 的频道一律拒收，
+    # 否则任何人只要知道频道 ID 就能驱动数字员工执行工具、产生真实副作用。
     cfg = ch.get("config") or {}
-    secret = cfg.get("secret")
-    if secret and body.secret != secret:
+    secret = str(cfg.get("secret") or "")
+    if not secret:
+        raise HTTPException(403, "该频道未配置 Webhook 密钥，拒绝接入；"
+                                 "请先在频道配置中设置 secret，再对外暴露回调地址")
+    # 定值比较防时序侧信道
+    if not secrets.compare_digest(str(body.secret or ""), secret):
         raise HTTPException(403, "secret 校验失败")
     employees = conversations.list_employee_ids_for_channel(channel_id)
     if not employees:

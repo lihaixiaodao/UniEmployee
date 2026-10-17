@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 workspace/zj_unicom_kb/ 下的浙江联通知识文档灌入 RAGFlow「浙江联通业务知识库」。
+"""把 workspace/ 下的运营商知识文档灌入 RAGFlow「业务知识库」（企业部署时替换为企业自有知识文档）。
 
 幂等：数据集按名称复用，同名文档跳过，可重复执行。
 
@@ -22,7 +22,7 @@ from seed_ragflow import (  # noqa: E402
 )
 
 KB_DIR = ROOT / "workspace" / "zj_unicom_kb"
-DS_NAME = "浙江联通业务知识库"
+DS_NAME = "业务知识库"
 
 
 def main() -> None:
@@ -31,7 +31,7 @@ def main() -> None:
         print(f"错误：{KB_DIR} 下没有 md 文件")
         sys.exit(1)
     print(f"共发现 {len(files)} 个知识文档")
-    did = ensure_dataset(DS_NAME, "浙江联通业务政策、套餐规则、办理流程知识库（售前客服）")
+    did = ensure_dataset(DS_NAME, "业务政策、套餐规则、办理流程知识库（售前客服）")
     print(f"  数据集 id={did}")
     upload_into(did, DS_NAME, files)
     trigger_parse(did, DS_NAME)

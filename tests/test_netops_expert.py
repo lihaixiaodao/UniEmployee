@@ -129,9 +129,9 @@ def test_seed_if_empty_seeds_netops_sops_and_bindings():
 def test_backfill_upgrades_untouched_persona():
     """老库：persona 还是旧版 → 自动同步为新版，并补齐技能/SOP 绑定。"""
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "网络运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "网络运营专家",
         "model": "dummy-model",
-        "persona": "你是小网，星联通信的网络运营专家，负责基站运维、装维调度与客户网络保障。\n"
+        "persona": "你是算网运营专家，本企业的网络运营专家，负责基站运维、装维调度与客户网络保障。\n"
                    "语气干练，结论先行，处置建议可执行。",
         "skills": ["fault-impact-analysis"], "tools": ["kb_search"]})
     catalog.backfill_netops_upgrade()
@@ -155,7 +155,7 @@ def test_backfill_preserves_modified_persona():
     """老库：persona 被管理员改过 → 保留，但绑定仍补齐。"""
     custom = "自定义的网络运维助手人设，管理员手写内容。"
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "网络运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "网络运营专家",
         "model": "dummy-model", "persona": custom,
         "skills": [], "tools": []})
     catalog.backfill_netops_upgrade()
@@ -172,9 +172,9 @@ def test_backfill_preserves_modified_persona():
 
 def test_backfill_idempotent():
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "网络运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "网络运营专家",
         "model": "dummy-model",
-        "persona": "你是小网，星联通信的网络运营专家，负责基站运维、装维调度与客户网络保障。",
+        "persona": "你是算网运营专家，本企业的网络运营专家，负责基站运维、装维调度与客户网络保障。",
         "skills": [], "tools": []})
     catalog.backfill_netops_upgrade()
     catalog.backfill_netops_upgrade()
@@ -197,10 +197,10 @@ def test_backfill_idempotent():
 def test_backfill_sandbox_backend_forces_sandbox():
     """老库 net-ops 仍是 local_shell → backfill_sandbox_backend 强制对齐为 sandbox。"""
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "算网运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "算网运营专家",
         "model": "dummy-model",
         # 旧版特征句（沙箱前 persona）
-        "persona": "你是小网，星联通信的算网运营专家，所有文件在 workspace/data/ 目录下，"
+        "persona": "你是算网运营专家，本企业的算网运营专家，所有文件在 workspace/data/ 目录下，"
                    "execute 的工作目录已指向该位置。",
         "skills": [], "tools": []})
     catalog.backfill_sandbox_backend()
@@ -220,7 +220,7 @@ def test_backfill_sandbox_backend_preserves_modified_persona():
     """管理员改过 persona → backend 仍切 sandbox，但 persona 保留。"""
     custom = "自定义网络运营人设，管理员手写。"
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "算网运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "算网运营专家",
         "model": "dummy-model", "persona": custom,
         "skills": [], "tools": []})
     catalog.backfill_sandbox_backend()
@@ -236,9 +236,9 @@ def test_backfill_sandbox_backend_preserves_modified_persona():
 
 def test_backfill_sandbox_backend_idempotent():
     catalog.create_employee({
-        "id": "net-ops", "name": "小网", "role": "算网运营专家",
+        "id": "net-ops", "name": "算网运营专家", "role": "算网运营专家",
         "model": "dummy-model",
-        "persona": "你是小网，所有文件在 workspace/data/ 目录下。",
+        "persona": "你是算网运营专家，所有文件在 workspace/data/ 目录下。",
         "skills": [], "tools": []})
     catalog.backfill_sandbox_backend()
     catalog.backfill_sandbox_backend()  # 第二次不应报错

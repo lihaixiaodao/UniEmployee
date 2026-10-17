@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "description": "示例退款订单快照。字段与 CRM 订单数据包保持一致；sign_date 为事实字段，距今天数由程序运行时计算，不落库派生值。",
+    "source": "seed",
+    "generated_at": "2026-10-17",
+    "note": "签收日期以生成日为基准，随时间推移会自然超出 7 天无理由退货期；接入真实订单系统后由数据源保证时效性。"
+  },
+  "O12345": {"product": "X1 智能音箱", "amount": 399.0, "status": "已签收", "sign_date": "2026-10-14"},
+  "O12346": {"product": "S2 智能台灯", "amount": 199.0, "status": "已签收", "sign_date": "2026-10-07"},
+  "O12347": {"product": "X1 智能音箱", "amount": 399.0, "status": "运输中", "sign_date": null},
+  "O12348": {"product": "W5 智能手表（硅胶版）", "amount": 599.0, "status": "已签收", "sign_date": "2026-10-16"},
+  "O12349": {"product": "H7 降噪耳机", "amount": 499.0, "status": "已签收", "sign_date": "2026-10-12"},
+  "O12350": {"product": "P3 智能投影仪", "amount": 2599.0, "status": "运输中", "sign_date": null},
+  "O12351": {"product": "S2 Pro 双灯头台灯", "amount": 299.0, "status": "已签收", "sign_date": "2026-09-27"},
+  "O12352": {"product": "X1 智能音箱（白色）", "amount": 399.0, "status": "已签收", "sign_date": "2026-08-18"},
+  "O12353": {"product": "H7 Pro 降噪耳机", "amount": 699.0, "status": "已签收", "sign_date": "2026-10-15"},
+  "O12354": {"product": "W5 Pro eSIM 手表", "amount": 899.0, "status": "已签收", "sign_date": "2026-10-03"}
+}
